@@ -12,3 +12,5 @@ __pycache__/
 *.mp4
 *.avi
 stats.json
+frame_log.csv
+frame_log.csv

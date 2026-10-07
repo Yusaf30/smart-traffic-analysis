@@ -14,15 +14,17 @@ CONF_THRESHOLD = 0.4
 VEHICLE_CLASSES = [2, 3, 5, 7]
 CLASS_NAMES = {2: "Car", 3: "Bike", 5: "Bus", 7: "Truck"}
 
-EXPECTED_DIRECTION = "DOWN"   # change to "UP" if everything shows WRONG WAY
+EXPECTED_DIRECTION = "UP"     # change to "DOWN" if normal traffic shows WRONG WAY
 STOP_LINE_Y = 450
-COUNT_LINE_Y = 450            # vehicles are counted when they cross this line
+COUNT_LINE_Y = 330            # vehicles are counted when they cross this line
 
-DENSITY_LOW = 5               # fewer than this many vehicles in frame = LOW
-DENSITY_HIGH = 12             # this many or more = HIGH
+DENSITY_LOW = 6               # fewer than this many vehicles in frame = LOW
+DENSITY_HIGH = 9             # this many or more = HIGH
 
 RED_TIME = 10
 GREEN_TIME = 10
+
+LOG_EVERY = 1                 # print a live report every N frames
 
 # =========================
 # HOMOGRAPHY (CALIBRATE!)
@@ -63,10 +65,10 @@ def real_speed(prev, curr, fps):
 
 
 def get_direction(hist):
-    if len(hist) < 5:
+    if len(hist) < 15:
         return "NONE"
     dy = hist[-1][1] - hist[0][1]
-    if abs(dy) < 15:
+    if abs(dy) < 40:
         return "NONE"
     return "DOWN" if dy > 0 else "UP"
 
@@ -108,13 +110,17 @@ fps = cap.get(cv2.CAP_PROP_FPS)
 if fps == 0:
     fps = 25
 
-track_history = defaultdict(lambda: deque(maxlen=10))
+track_history = defaultdict(lambda: deque(maxlen=30))
 counted_ids = set()
+recent_counts = deque(maxlen=30)
 wrong_ids = set()
 counts = {"Car": 0, "Bike": 0, "Bus": 0, "Truck": 0}
-
+wrong_streak = defaultdict(int)
 start_time = time.time()
 frame_id = 0
+
+log_file = open("frame_log.csv", "w")
+log_file.write("frame,in_frame,total,car,bike,bus,truck,density,wrong_total,wrong_now,fps\n")
 
 # =========================
 # MAIN LOOP
@@ -125,9 +131,8 @@ while True:
         print("Video ended.")
         break
 
+    frame = cv2.resize(frame, (1280, 720))
     frame_id += 1
-    if frame_id == 1:
-        print("Video size (height, width, channels):", frame.shape)
     annotated = frame.copy()
 
     # Traffic light simulation
@@ -147,6 +152,7 @@ while True:
     )
 
     n_in_frame = 0
+    wrong_now = []
 
     if results[0].boxes.id is not None:
 
@@ -178,8 +184,14 @@ while True:
                     counts[name] += 1
 
             if is_wrong:
-                wrong_ids.add(tid)
-
+                wrong_streak[tid] += 1
+            else:
+                wrong_streak[tid] = 0
+            is_wrong = wrong_streak[tid] >= 20   # must stay wrong for 20 frames
+            if is_wrong:
+                wrong_ids.add(int(tid))
+                wrong_now.append(int(tid))
+                
             color = (0, 255, 0)
             if is_wrong:
                 color = (255, 0, 255)
@@ -205,7 +217,8 @@ while True:
 
     # Stats panel
     total = sum(counts.values())
-    density = traffic_density(n_in_frame)
+    recent_counts.append(n_in_frame)
+    density = traffic_density(sum(recent_counts) / len(recent_counts))
     panel = [f"Total: {total}",
              f"Cars: {counts['Car']}  Bikes: {counts['Bike']}",
              f"Buses: {counts['Bus']}  Trucks: {counts['Truck']}",
@@ -226,6 +239,16 @@ while True:
     cv2.putText(annotated, f"FPS:{fps_live:.2f}", (20, 100),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
 
+    # Live report (terminal + CSV)
+    if frame_id % LOG_EVERY == 0:
+        print(f"F{frame_id:04d} | in_frame={n_in_frame:2d} | total={total:3d} | "
+              f"car={counts['Car']} bike={counts['Bike']} bus={counts['Bus']} "
+              f"truck={counts['Truck']} | density={density:6s} | "
+              f"wrong_total={len(wrong_ids)} now={wrong_now} | fps={fps_live:.1f}")
+    log_file.write(f"{frame_id},{n_in_frame},{total},{counts['Car']},{counts['Bike']},"
+                   f"{counts['Bus']},{counts['Truck']},{density},{len(wrong_ids)},"
+                   f"{len(wrong_now)},{fps_live:.1f}\n")
+
     cv2.imshow("Traffic System", annotated)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -236,5 +259,12 @@ while True:
 # =========================
 cap.release()
 cv2.destroyAllWindows()
+log_file.close()
 
+print("=" * 60)
+print("FINAL COUNTS:", counts, "TOTAL:", sum(counts.values()))
+print("WRONG-WAY IDs:", sorted(wrong_ids))
+print("TRACKED IDs:", len(track_history))
+print("Frames processed:", frame_id)
+print("=" * 60)
 print("Processing Complete ✅")
