@@ -1,0 +1,14 @@
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Model weights (large, auto-downloaded)
+*.pt
+
+# Videos and generated output
+*.mp4
+*.avi
+stats.json
