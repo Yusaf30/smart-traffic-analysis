@@ -1,88 +1,14 @@
 ﻿import json
-import re
 import unittest
-from datetime import datetime
 from pathlib import Path
+
+from app.event_validation import validate_event
+from app.analytics.counter import VehicleCounter
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = ROOT / "contracts" / "event_schema.json"
 SAMPLES_PATH = ROOT / "samples" / "sample_events.json"
-
-EVENT_TYPES = {"vehicle_crossing", "wrong_way"}
-VEHICLE_CLASSES = {"CAR", "BIKE", "BUS", "TRUCK"}
-DIRECTIONS = {"UP", "DOWN", "LEFT", "RIGHT", "UNKNOWN"}
-TIMESTAMP_PATTERN = re.compile(
-    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$"
-)
-
-
-def validate_event(event):
-    required = {
-        "schema_version", "event_id", "session_id", "event_type",
-        "timestamp", "track_id", "vehicle_class", "direction",
-        "counting_line"
-    }
-
-    if not isinstance(event, dict):
-        raise ValueError("Event must be an object")
-
-    if set(event) != required:
-        raise ValueError("Missing or unexpected fields")
-
-    if event["schema_version"] != "1.0":
-        raise ValueError("Unsupported schema version")
-
-    for field in ("event_id", "session_id"):
-        if not isinstance(event[field], str) or not event[field].strip():
-            raise ValueError(f"{field} must be a non-empty string")
-
-    if event["event_type"] not in EVENT_TYPES:
-        raise ValueError("Invalid event_type")
-
-    if type(event["track_id"]) is not int or event["track_id"] < 0:
-        raise ValueError("track_id must be a non-negative integer")
-
-    if event["vehicle_class"] not in VEHICLE_CLASSES:
-        raise ValueError("Invalid vehicle_class")
-
-    if event["direction"] not in DIRECTIONS:
-        raise ValueError("Invalid direction")
-
-    timestamp = event["timestamp"]
-    if not isinstance(timestamp, str) or not TIMESTAMP_PATTERN.fullmatch(timestamp):
-        raise ValueError("Timestamp must use UTC ISO 8601 with milliseconds and Z")
-
-    try:
-        datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%fZ")
-    except ValueError as exc:
-        raise ValueError("Invalid timestamp date or time") from exc
-
-    line = event["counting_line"]
-    if event["event_type"] == "vehicle_crossing":
-        if not isinstance(line, str) or not line.strip():
-            raise ValueError("Crossing events require a counting_line")
-    elif line is not None:
-        raise ValueError("Wrong-way events require counting_line=null")
-
-    return True
-
-
-class EventProcessor:
-    """Minimal in-memory example of session-scoped event deduplication."""
-
-    def __init__(self):
-        self.processed_keys = set()
-
-    def process(self, event):
-        validate_event(event)
-        key = (event["session_id"], event["event_id"])
-
-        if key in self.processed_keys:
-            return False
-
-        self.processed_keys.add(key)
-        return True
 
 
 class EventContractTests(unittest.TestCase):
@@ -162,39 +88,45 @@ class EventContractTests(unittest.TestCase):
             validate_event(event)
 
     def test_duplicate_event_is_ignored(self):
-        processor = EventProcessor()
+        counter = VehicleCounter()
         event = self.samples[0]
-        self.assertTrue(processor.process(event))
-        self.assertFalse(processor.process(event))
+        self.assertTrue(counter.process_event(event))
+        self.assertFalse(counter.process_event(event))
+        self.assertEqual(counter.get_stats()["total"], 1)
 
     def test_same_event_id_in_different_sessions_is_allowed(self):
-        processor = EventProcessor()
+        counter = VehicleCounter()
         event = self.samples[0].copy()
-        self.assertTrue(processor.process(event))
+        self.assertTrue(counter.process_event(event))
 
         second_session = event.copy()
         second_session["session_id"] = "session-20261009-002"
-        self.assertTrue(processor.process(second_session))
+        self.assertTrue(counter.process_event(second_session))
+        self.assertEqual(counter.get_stats()["total"], 2)
 
     def test_distinct_crossings_for_same_track_are_allowed(self):
-        processor = EventProcessor()
+        counter = VehicleCounter()
         event = self.samples[0].copy()
-        self.assertTrue(processor.process(event))
+        self.assertTrue(counter.process_event(event))
 
         recrossing = event.copy()
         recrossing["event_id"] = "evt-000003"
         recrossing["direction"] = "DOWN"
-        self.assertTrue(processor.process(recrossing))
+        self.assertTrue(counter.process_event(recrossing))
+        self.assertEqual(counter.get_stats()["total"], 2)
 
-    def test_wrong_way_episode_can_emit_a_new_event_id(self):
-        processor = EventProcessor()
-        event = self.samples[1].copy()
-        self.assertTrue(processor.process(event))
+    def test_wrong_way_event_does_not_increment_crossings(self):
+        counter = VehicleCounter()
+        self.assertFalse(counter.process_event(self.samples[1]))
+        self.assertEqual(counter.get_stats()["total"], 0)
 
-        new_episode = event.copy()
-        new_episode["event_id"] = "evt-000004"
-        new_episode["timestamp"] = "2026-10-09T04:40:01.100Z"
-        self.assertTrue(processor.process(new_episode))
+    def test_counts_by_class_and_direction(self):
+        counter = VehicleCounter()
+        counter.process_event(self.samples[0])
+
+        stats = counter.get_stats()
+        self.assertEqual(stats["by_class"]["CAR"], 1)
+        self.assertEqual(stats["by_direction"]["UP"], 1)
 
 
 if __name__ == "__main__":
