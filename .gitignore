@@ -21,3 +21,4 @@ input_raw.mp4
 # Downloaded YOLO model weights
 
 yolov8n.pt
+events.json

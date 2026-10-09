@@ -4,6 +4,8 @@ import numpy as np
 import time
 from collections import defaultdict, deque
 from ultralytics import YOLO
+from uuid import uuid4
+from traffic_analysis.events import TrafficEvent
 
 # =========================
 # CONFIG
@@ -74,7 +76,10 @@ def get_direction(hist):
 
 
 def wrong_way(direction):
-    return direction != "NONE" and direction != EXPECTED_DIRECTION
+    return (
+        direction in {"UP", "DOWN", "LEFT", "RIGHT"}
+        and direction != EXPECTED_DIRECTION
+    )
 
 
 def traffic_density(n):
@@ -118,6 +123,9 @@ counts = {"Car": 0, "Bike": 0, "Bus": 0, "Truck": 0}
 wrong_streak = defaultdict(int)
 start_time = time.time()
 frame_id = 0
+session_id = uuid4().hex
+events = []
+wrong_event_ids = set()
 
 log_file = open("frame_log.csv", "w")
 log_file.write("frame,in_frame,total,car,bike,bus,truck,density,wrong_total,wrong_now,fps\n")
@@ -171,26 +179,57 @@ while True:
             speed = real_speed(prev, (cx, cy), fps)
 
             direction = get_direction(track_history[tid])
+            if direction == "NONE":
+                direction = "UNKNOWN"
             is_wrong = wrong_way(direction)
 
             is_red = red_light_violation((cx, cy), prev, light)
 
             name = CLASS_NAMES.get(cls, "Vehicle")
 
-            # Counting: each ID counted once when it crosses the line
+
+            # Count each tracked vehicle once and emit a crossing event.
             if prev is not None and tid not in counted_ids:
-                if (prev[1] < COUNT_LINE_Y <= cy) or (prev[1] >= COUNT_LINE_Y > cy):
+                crossed_line = (
+                    (prev[1] < COUNT_LINE_Y <= cy)
+                    or (prev[1] >= COUNT_LINE_Y > cy)
+                )
+
+                if crossed_line:
                     counted_ids.add(tid)
                     counts[name] += 1
+
+                    crossing_event = TrafficEvent.create(
+                        event_type="vehicle_crossing",
+                        session_id=session_id,
+                        track_id=int(tid),
+                        vehicle_class=name,
+                        direction=direction,
+                        counting_line="main_road_line",
+                    )
+                    events.append(crossing_event.to_dict())
 
             if is_wrong:
                 wrong_streak[tid] += 1
             else:
                 wrong_streak[tid] = 0
             is_wrong = wrong_streak[tid] >= 20   # must stay wrong for 20 frames
+
             if is_wrong:
                 wrong_ids.add(int(tid))
                 wrong_now.append(int(tid))
+
+                if tid not in wrong_event_ids:
+                    wrong_event = TrafficEvent.create(
+                        event_type="wrong_way",
+                        session_id=session_id,
+                        track_id=int(tid),
+                        vehicle_class=name,
+                        direction=direction,
+                        counting_line=None,
+                    )
+                    events.append(wrong_event.to_dict())
+                    wrong_event_ids.add(tid)
                 
             color = (0, 255, 0)
             if is_wrong:
@@ -268,3 +307,9 @@ print("TRACKED IDs:", len(track_history))
 print("Frames processed:", frame_id)
 print("=" * 60)
 print("Processing Complete ✅")
+
+with open("events.json", "w", encoding="utf-8") as event_file:
+    json.dump(events, event_file, indent=2)
+
+print(f"Events saved: {len(events)}")
+print("Event output: events.json")
