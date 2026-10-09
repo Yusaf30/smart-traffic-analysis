@@ -21,4 +21,19 @@ input_raw.mp4
 # Downloaded YOLO model weights
 
 yolov8n.pt
+
+# Python test artifacts
+.pytest_cache/
+__pycache__/
+*.py[cod]
+
+# Model weights
+*.pt
+
+# Generated model/test outputs
+runs/
+
+# Generated traffic-analysis outputs
 events.json
+stats.json
+frame_log.csv
