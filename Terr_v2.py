@@ -154,7 +154,7 @@ while True:
     n_in_frame = 0
     wrong_now = []
 
-    if results[0].boxes.id is not None:
+    if results[0].boxes is not None and results[0].boxes.id is not None:
 
         boxes = results[0].boxes.xyxy.cpu().numpy()
         ids = results[0].boxes.id.cpu().numpy().astype(int)
