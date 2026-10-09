@@ -20,7 +20,9 @@ def classify_density(vehicle_count: int) -> str:
 
 
 def load_events(path: str | Path = "events.json") -> list[dict]:
-    """Load events from a JSON file and check the basic data structure."""
+    """Load events from JSON and validate their schema."""
+    from datetime import datetime
+
     with open(path, encoding="utf-8") as event_file:
         events = json.load(event_file)
 
@@ -28,15 +30,10 @@ def load_events(path: str | Path = "events.json") -> list[dict]:
         raise ValueError("Events JSON must contain a list")
 
     required_fields = {
-        "event_id",
-        "event_type",
-        "timestamp",
-        "session_id",
-        "track_id",
-        "vehicle_class",
-        "direction",
-        "counting_line",
+        "event_id", "event_type", "timestamp", "session_id",
+        "track_id", "vehicle_class", "direction", "counting_line",
     }
+    valid_directions = {"UP", "DOWN", "LEFT", "RIGHT", "UNKNOWN"}
     seen_ids = set()
 
     for index, event in enumerate(events):
@@ -50,26 +47,40 @@ def load_events(path: str | Path = "events.json") -> list[dict]:
             )
 
         if event["event_type"] not in EVENT_TYPES:
-            raise ValueError(
-                f"Invalid event_type at index {index}: "
-                f"{event['event_type']}"
-            )
+            raise ValueError(f"Invalid event_type at index {index}")
 
         if event["vehicle_class"] not in VEHICLE_CLASSES:
-            raise ValueError(
-                f"Invalid vehicle_class at index {index}: "
-                f"{event['vehicle_class']}"
-            )
+            raise ValueError(f"Invalid vehicle_class at index {index}")
+
+        if event["direction"] not in valid_directions:
+            raise ValueError(f"Invalid direction at index {index}")
 
         event_id = event["event_id"]
-        if not isinstance(event_id, str) or not event_id:
+        if not isinstance(event_id, str) or not event_id.strip():
             raise ValueError(f"Invalid event_id at index {index}")
         if event_id in seen_ids:
             raise ValueError(f"Duplicate event_id: {event_id}")
         seen_ids.add(event_id)
 
+        session_id = event["session_id"]
+        if not isinstance(session_id, str) or not session_id.strip():
+            raise ValueError(f"Invalid session_id at index {index}")
+
+        track_id = event["track_id"]
+        if isinstance(track_id, bool) or not isinstance(track_id, int) or track_id < 0:
+            raise ValueError(f"Invalid track_id at index {index}")
+
+        timestamp = event["timestamp"]
+        if not isinstance(timestamp, str):
+            raise ValueError(f"Invalid timestamp at index {index}")
+        try:
+            datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError(f"Invalid timestamp at index {index}") from exc
+
         if event["event_type"] == "vehicle_crossing":
-            if not event["counting_line"]:
+            line = event["counting_line"]
+            if not isinstance(line, str) or not line.strip():
                 raise ValueError(
                     f"Crossing event at index {index} needs counting_line"
                 )
@@ -80,7 +91,6 @@ def load_events(path: str | Path = "events.json") -> list[dict]:
             )
 
     return events
-
 
 def summarize_events(events: list[dict]) -> dict:
     """Summarize crossing counts and recorded wrong-way events."""

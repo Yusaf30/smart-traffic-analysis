@@ -67,3 +67,46 @@ def test_load_events_rejects_duplicate_ids(tmp_path):
 
     with pytest.raises(ValueError, match="Duplicate event_id"):
         load_events(path)
+
+
+def valid_event():
+    return {
+        "event_id": "event-1",
+        "event_type": "vehicle_crossing",
+        "timestamp": "2026-10-09T05:09:49.478Z",
+        "session_id": "session-1",
+        "track_id": 1,
+        "vehicle_class": "Car",
+        "direction": "UNKNOWN",
+        "counting_line": "main_road_line",
+    }
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("direction", "SIDEWAYS", "Invalid direction"),
+        ("timestamp", "not-a-date", "Invalid timestamp"),
+        ("track_id", -1, "Invalid track_id"),
+        ("track_id", True, "Invalid track_id"),
+        ("session_id", "", "Invalid session_id"),
+    ],
+)
+def test_load_events_rejects_invalid_fields(
+    tmp_path, field, value, message
+):
+    event = valid_event()
+    event[field] = value
+    path = tmp_path / "events.json"
+    path.write_text(json.dumps([event]), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
+        load_events(path)
+
+
+def test_load_events_accepts_unknown_direction(tmp_path):
+    event = valid_event()
+    path = tmp_path / "events.json"
+    path.write_text(json.dumps([event]), encoding="utf-8")
+
+    assert load_events(path)[0]["direction"] == "UNKNOWN"
