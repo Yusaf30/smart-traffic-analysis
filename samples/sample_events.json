@@ -1,0 +1,24 @@
+﻿[
+  {
+    "schema_version": "1.0",
+    "event_id": "evt-000001",
+    "session_id": "session-20261009-001",
+    "event_type": "vehicle_crossing",
+    "timestamp": "2026-10-09T04:35:12.250Z",
+    "track_id": 42,
+    "vehicle_class": "CAR",
+    "direction": "UP",
+    "counting_line": "main_line"
+  },
+  {
+    "schema_version": "1.0",
+    "event_id": "evt-000002",
+    "session_id": "session-20261009-001",
+    "event_type": "wrong_way",
+    "timestamp": "2026-10-09T04:36:01.100Z",
+    "track_id": 57,
+    "vehicle_class": "BIKE",
+    "direction": "DOWN",
+    "counting_line": null
+  }
+]
