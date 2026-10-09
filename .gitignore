@@ -1,16 +1,23 @@
-# Virtual environment
+# Python virtual environments
+
 venv/
+venv_backup/
 
 # Python cache
-__pycache__/
-*.pyc
 
-# Model weights (large, auto-downloaded)
-*.pt
+**pycache**/
+*.py[cod]
 
-# Videos and generated output
-*.mp4
-*.avi
+# Generated traffic-analysis outputs
+
 stats.json
 frame_log.csv
-frame_log.csv
+
+# Local input videos
+
+input.mp4
+input_raw.mp4
+
+# Downloaded YOLO model weights
+
+yolov8n.pt
