@@ -110,3 +110,29 @@ def test_load_events_accepts_unknown_direction(tmp_path):
     path.write_text(json.dumps([event]), encoding="utf-8")
 
     assert load_events(path)[0]["direction"] == "UNKNOWN"
+
+
+def test_summarize_events_counts_helmet_violations():
+    events = [
+        {
+            "event_type": "vehicle_crossing",
+            "vehicle_class": "Bike",
+            "session_id": "s1",
+        },
+        {
+            "event_type": "helmet_violation",
+            "vehicle_class": "Bike",
+            "session_id": "s1",
+        },
+        {
+            "event_type": "helmet_violation",
+            "vehicle_class": "Bike",
+            "session_id": "s1",
+        },
+    ]
+
+    summary = summarize_events(events)
+
+    assert summary["total_crossings"] == 1
+    assert summary["wrong_way_events"] == 0
+    assert summary["helmet_violations"] == 2

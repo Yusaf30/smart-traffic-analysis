@@ -5,7 +5,7 @@ from collections import Counter
 from pathlib import Path
 
 VEHICLE_CLASSES = ("Car", "Bike", "Bus", "Truck")
-EVENT_TYPES = ("vehicle_crossing", "wrong_way")
+EVENT_TYPES = ("vehicle_crossing", "wrong_way", "helmet_violation")
 
 
 def classify_density(vehicle_count: int) -> str:
@@ -103,6 +103,11 @@ def summarize_events(events: list[dict]) -> dict:
         if event["event_type"] == "wrong_way"
     ]
 
+    helmet_violations = [
+        event for event in events
+        if event["event_type"] == "helmet_violation"
+    ]
+
     class_counts = Counter(event["vehicle_class"] for event in crossings)
 
     return {
@@ -112,6 +117,7 @@ def summarize_events(events: list[dict]) -> dict:
             for vehicle_class in VEHICLE_CLASSES
         },
         "wrong_way_events": len(wrong_way_events),
+        "helmet_violations": len(helmet_violations),
         "session_ids": sorted({
             event["session_id"] for event in events
         }),
@@ -128,6 +134,7 @@ def main() -> None:
     for vehicle_class, count in summary["vehicle_counts"].items():
         print(f"{vehicle_class}: {count}")
     print(f"Wrong-way events: {summary['wrong_way_events']}")
+    print(f"Helmet violations: {summary['helmet_violations']}")
     print(f"Sessions: {len(summary['session_ids'])}")
 
 

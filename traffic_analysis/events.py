@@ -4,11 +4,19 @@ from typing import Literal
 from uuid import uuid4
 
 
-EventType = Literal["vehicle_crossing", "wrong_way"]
+EventType = Literal[
+    "vehicle_crossing",
+    "wrong_way",
+    "helmet_violation",
+]
 VehicleClass = Literal["Car", "Bike", "Bus", "Truck"]
 Direction = Literal["UP", "DOWN", "LEFT", "RIGHT", "UNKNOWN"]
 
-VALID_EVENT_TYPES = {"vehicle_crossing", "wrong_way"}
+VALID_EVENT_TYPES = {
+    "vehicle_crossing",
+    "wrong_way",
+    "helmet_violation",
+}
 VALID_VEHICLE_CLASSES = {"Car", "Bike", "Bus", "Truck"}
 VALID_DIRECTIONS = {"UP", "DOWN", "LEFT", "RIGHT", "UNKNOWN"}
 
@@ -52,7 +60,7 @@ class TrafficEvent:
             if not isinstance(self.counting_line, str) or not self.counting_line.strip():
                 raise ValueError("vehicle_crossing requires counting_line")
         elif self.counting_line is not None:
-            raise ValueError("wrong_way must have counting_line=None")
+            raise ValueError(f"{self.event_type} must have counting_line=None")
 
         if not self.event_id:
             object.__setattr__(
