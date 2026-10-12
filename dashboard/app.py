@@ -44,5 +44,33 @@ else:
     except (json.JSONDecodeError, OSError) as error:
         st.error(f"Could not read traffic statistics: {error}")
 
+st.subheader("Event Analytics")
+
+EVENTS_FILE = PROJECT_ROOT / "events.json"
+
+if not EVENTS_FILE.exists():
+    st.info(
+        "Event data is not available yet. "
+        "Run the computer-vision pipeline to generate events.json."
+    )
+else:
+    try:
+        from traffic_analysis.analytics import load_events, summarize_events
+
+        events = load_events(EVENTS_FILE)
+        summary = summarize_events(events)
+
+        col1, col2 = st.columns(2)
+        col1.metric("Total Crossings", summary["total_crossings"])
+        col2.metric("Wrong-Way Events", summary["wrong_way_events"])
+
+        st.write("Vehicle Crossings by Class")
+        st.bar_chart(summary["vehicle_counts"])
+
+        st.caption(f"Recorded sessions: {len(summary['session_ids'])}")
+
+    except (ValueError, OSError, json.JSONDecodeError) as error:
+        st.error(f"Could not read event analytics: {error}")
+
 st.subheader("Exports")
 st.info("CSV and JSON export integration will be added in a later step.")
