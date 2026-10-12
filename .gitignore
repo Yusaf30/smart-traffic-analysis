@@ -1,16 +1,20 @@
-# Virtual environment
+﻿# Python virtual environments
 venv/
+venv_backup/
 
 # Python cache
 __pycache__/
-*.pyc
+**/__pycache__/
+*.py[cod]
 
 # Model weights (large, auto-downloaded)
 *.pt
 
-# Videos and generated output
+# Videos and generated traffic-analysis output
 *.mp4
 *.avi
+*.mov
+*.mkv
 stats.json
 frame_log.csv
-frame_log.csv
+events.json
