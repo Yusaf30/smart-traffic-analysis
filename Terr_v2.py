@@ -6,6 +6,7 @@ from collections import defaultdict, deque
 from ultralytics import YOLO
 from uuid import uuid4
 from traffic_analysis.events import TrafficEvent
+from traffic_analysis.helmet_monitor import HelmetRiderMonitor
 
 # =========================
 # CONFIG
@@ -106,6 +107,9 @@ def red_light_violation(curr, prev, light):
 # INIT
 # =========================
 model = YOLO("yolov8n.pt")
+helmet_model = YOLO("models/candidates/helmet_iam_tsr.pt")
+person_model = YOLO("yolov8n.pt")   # separate instance; vehicle tracker stays untouched
+helmet_monitor = HelmetRiderMonitor(helmet_model, person_model, every=3)
 
 cap = cv2.VideoCapture(VIDEO_PATH)
 if not cap.isOpened():
@@ -126,6 +130,7 @@ frame_id = 0
 session_id = uuid4().hex
 events = []
 wrong_event_ids = set()
+helmet_violation_ids = set()
 
 log_file = open("frame_log.csv", "w")
 log_file.write("frame,in_frame,total,car,bike,bus,truck,density,wrong_total,wrong_now,fps\n")
@@ -161,6 +166,7 @@ while True:
 
     n_in_frame = 0
     wrong_now = []
+    bike_tracks = []
 
     if results[0].boxes is not None and results[0].boxes.id is not None:
 
@@ -187,6 +193,8 @@ while True:
 
             name = CLASS_NAMES.get(cls, "Vehicle")
 
+            if name == "Bike":
+                bike_tracks.append((int(tid), (x1, y1, x2, y2)))
 
             # Count each tracked vehicle once and emit a crossing event.
             if prev is not None and tid not in counted_ids:
@@ -242,11 +250,32 @@ while True:
             label = f"{name} ID:{tid} {int(speed)}km/h {direction}"
             if is_wrong:
                 label += " WRONG WAY"
+            if tid in helmet_violation_ids:
+                label += " NO HELMET"
             if is_red:
                 label += " RED VIOLATION"
 
             cv2.putText(annotated, label, (x1, y1 - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+    # Rider-based helmet check (person + bike association; runs every 3rd frame).
+    for bike_id in helmet_monitor.update(frame, bike_tracks, frame_id):
+        if bike_id in helmet_violation_ids:
+            continue
+        bike_dir = get_direction(track_history[bike_id])
+        if bike_dir == "NONE":
+            bike_dir = "UNKNOWN"
+        helmet_event = TrafficEvent.create(
+            event_type="helmet_violation",
+            session_id=session_id,
+            track_id=int(bike_id),
+            vehicle_class="Bike",
+            direction=bike_dir,
+        )
+        events.append(helmet_event.to_dict())
+        helmet_violation_ids.add(int(bike_id))
+        print(f"HELMET VIOLATION | bike track_id={bike_id}")
+    helmet_monitor.draw(annotated, frame_id)
 
     # Stop line (red) and count line (blue)
     cv2.line(annotated, (0, STOP_LINE_Y),
