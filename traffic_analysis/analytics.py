@@ -19,6 +19,22 @@ def classify_density(vehicle_count: int) -> str:
     return "HIGH"
 
 
+def build_stats_snapshot(counts, visible_now, wrong_way):
+    """Build the dashboard ``stats.json`` payload from cumulative counts.
+
+    ``total`` is the cumulative number of confirmed crossings (the sum of the
+    per-class counts), NOT the number of vehicles visible in a single frame.
+    ``density`` is derived only from ``visible_now`` (vehicles detected in the
+    current frame). Key order matches the legacy stats.json schema.
+    """
+    snapshot = {"total": sum(counts[name] for name in VEHICLE_CLASSES)}
+    for name in VEHICLE_CLASSES:
+        snapshot[name] = counts[name]
+    snapshot["density"] = classify_density(visible_now)
+    snapshot["wrong_way"] = wrong_way
+    return snapshot
+
+
 def load_events(path: str | Path = "events.json") -> list[dict]:
     """Load events from JSON and validate their schema."""
     from datetime import datetime

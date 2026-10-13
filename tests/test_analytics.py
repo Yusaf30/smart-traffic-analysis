@@ -3,6 +3,7 @@ import json
 import pytest
 
 from traffic_analysis.analytics import (
+    build_stats_snapshot,
     classify_density,
     load_events,
     summarize_events,
@@ -136,3 +137,61 @@ def test_summarize_events_counts_helmet_violations():
     assert summary["total_crossings"] == 1
     assert summary["wrong_way_events"] == 0
     assert summary["helmet_violations"] == 2
+
+
+def _zero_counts():
+    return {"Car": 0, "Bike": 0, "Bus": 0, "Truck": 0}
+
+
+def test_build_stats_snapshot_total_is_zero_when_nothing_counted():
+    # Regression: 7 vehicles visible in the frame but zero confirmed crossings.
+    # `total` must report counted crossings (0), NOT the per-frame visible count.
+    counts = _zero_counts()
+    snapshot = build_stats_snapshot(counts, visible_now=7, wrong_way=1)
+
+    assert snapshot == {
+        "total": 0,
+        "Car": 0,
+        "Bike": 0,
+        "Bus": 0,
+        "Truck": 0,
+        "density": "MEDIUM",
+        "wrong_way": 1,
+    }
+
+
+def test_build_stats_snapshot_total_equals_class_count_sum():
+    counts = {"Car": 10, "Bike": 3, "Bus": 1, "Truck": 0}
+    snapshot = build_stats_snapshot(counts, visible_now=2, wrong_way=0)
+
+    assert snapshot["total"] == sum(counts.values()) == 14
+    assert snapshot["Car"] == 10 and snapshot["Bike"] == 3
+    assert snapshot["Bus"] == 1 and snapshot["Truck"] == 0
+
+
+def test_build_stats_snapshot_total_independent_of_visible_now():
+    # The same cumulative counts must yield the same `total` regardless of how
+    # many vehicles happen to be visible in the current frame.
+    counts = {"Car": 4, "Bike": 0, "Bus": 0, "Truck": 0}
+    dense = build_stats_snapshot(counts, visible_now=12, wrong_way=0)
+    sparse = build_stats_snapshot(counts, visible_now=1, wrong_way=0)
+
+    assert dense["total"] == sparse["total"] == 4
+    # Density is the only field driven by the per-frame visible count.
+    assert dense["density"] == "HIGH"
+    assert sparse["density"] == "LOW"
+
+
+def test_build_stats_snapshot_preserves_schema_key_order():
+    snapshot = build_stats_snapshot(_zero_counts(), visible_now=0, wrong_way=0)
+
+    assert list(snapshot.keys()) == [
+        "total", "Car", "Bike", "Bus", "Truck", "density", "wrong_way",
+    ]
+
+
+def test_build_stats_snapshot_density_follows_visible_now_thresholds():
+    counts = _zero_counts()
+    assert build_stats_snapshot(counts, visible_now=5, wrong_way=0)["density"] == "LOW"
+    assert build_stats_snapshot(counts, visible_now=6, wrong_way=0)["density"] == "MEDIUM"
+    assert build_stats_snapshot(counts, visible_now=9, wrong_way=0)["density"] == "HIGH"
