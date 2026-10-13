@@ -46,3 +46,7 @@ diag_helmet/
 vehicle_evidence/
 india_trafic.mp4
 track_log.csv
+
+# Local diagnostic utilities
+tools/analyze_helmet_matches.py
+tools/helmet_diag.py
