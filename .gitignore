@@ -37,3 +37,12 @@ runs/
 events.json
 stats.json
 frame_log.csv
+
+# Local traffic-analysis evidence and test data
+baseline_before_two_pass/
+diag_class_flip/
+diag_crossings/
+diag_helmet/
+vehicle_evidence/
+india_trafic.mp4
+track_log.csv
