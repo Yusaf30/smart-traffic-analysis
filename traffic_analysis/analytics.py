@@ -5,7 +5,7 @@ from collections import Counter
 from pathlib import Path
 
 VEHICLE_CLASSES = ("Car", "Bike", "Bus", "Truck")
-EVENT_TYPES = ("vehicle_crossing", "wrong_way")
+EVENT_TYPES = ("vehicle_crossing", "wrong_way", "helmet_violation")
 
 
 def classify_density(vehicle_count: int) -> str:
@@ -49,6 +49,10 @@ def load_events(path: str | Path = "events.json") -> list[dict]:
         if event["event_type"] not in EVENT_TYPES:
             raise ValueError(f"Invalid event_type at index {index}")
 
+        if "schema_version" in event:
+            if not isinstance(event["schema_version"], str) or event["schema_version"] != "1.0":
+                raise ValueError(f"Invalid schema_version at index {index}")
+
         if event["vehicle_class"] not in VEHICLE_CLASSES:
             raise ValueError(f"Invalid vehicle_class at index {index}")
 
@@ -85,8 +89,9 @@ def load_events(path: str | Path = "events.json") -> list[dict]:
                     f"Crossing event at index {index} needs counting_line"
                 )
         elif event["counting_line"] is not None:
+            prefix = "Wrong-way" if event["event_type"] == "wrong_way" else event["event_type"]
             raise ValueError(
-                f"Wrong-way event at index {index} must have "
+                f"{prefix} event at index {index} must have "
                 "counting_line=None"
             )
 
@@ -103,6 +108,11 @@ def summarize_events(events: list[dict]) -> dict:
         if event["event_type"] == "wrong_way"
     ]
 
+    helmet_violations = [
+        event for event in events
+        if event["event_type"] == "helmet_violation"
+    ]
+
     class_counts = Counter(event["vehicle_class"] for event in crossings)
 
     return {
@@ -112,6 +122,7 @@ def summarize_events(events: list[dict]) -> dict:
             for vehicle_class in VEHICLE_CLASSES
         },
         "wrong_way_events": len(wrong_way_events),
+        "helmet_violations": len(helmet_violations),
         "session_ids": sorted({
             event["session_id"] for event in events
         }),
@@ -128,6 +139,7 @@ def main() -> None:
     for vehicle_class, count in summary["vehicle_counts"].items():
         print(f"{vehicle_class}: {count}")
     print(f"Wrong-way events: {summary['wrong_way_events']}")
+    print(f"Helmet violations: {summary['helmet_violations']}")
     print(f"Sessions: {len(summary['session_ids'])}")
 
 

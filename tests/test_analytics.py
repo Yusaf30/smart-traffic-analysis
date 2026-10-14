@@ -110,3 +110,37 @@ def test_load_events_accepts_unknown_direction(tmp_path):
     path.write_text(json.dumps([event]), encoding="utf-8")
 
     assert load_events(path)[0]["direction"] == "UNKNOWN"
+
+
+def test_load_events_accepts_valid_schema_version(tmp_path):
+    event = valid_event()
+    event["schema_version"] = "1.0"
+    path = tmp_path / "events.json"
+    path.write_text(json.dumps([event]), encoding="utf-8")
+
+    loaded = load_events(path)
+    assert len(loaded) == 1
+    assert loaded[0]["schema_version"] == "1.0"
+
+
+def test_load_events_rejects_invalid_schema_version(tmp_path):
+    event = valid_event()
+    event["schema_version"] = "2.0"
+    path = tmp_path / "events.json"
+    path.write_text(json.dumps([event]), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Invalid schema_version"):
+        load_events(path)
+
+
+def test_load_events_accepts_helmet_violation(tmp_path):
+    event = valid_event()
+    event["event_type"] = "helmet_violation"
+    event["vehicle_class"] = "Bike"
+    event["counting_line"] = None
+    path = tmp_path / "events.json"
+    path.write_text(json.dumps([event]), encoding="utf-8")
+
+    loaded = load_events(path)
+    assert len(loaded) == 1
+    assert loaded[0]["event_type"] == "helmet_violation"

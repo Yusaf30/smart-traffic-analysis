@@ -1,10 +1,10 @@
-﻿import re
+import re
 from datetime import datetime
 from typing import Any
 
 
-EVENT_TYPES = {"vehicle_crossing", "wrong_way"}
-VEHICLE_CLASSES = {"CAR", "BIKE", "BUS", "TRUCK"}
+EVENT_TYPES = {"vehicle_crossing", "wrong_way", "helmet_violation"}
+VEHICLE_CLASSES = {"Car", "Bike", "Bus", "Truck"}
 DIRECTIONS = {"UP", "DOWN", "LEFT", "RIGHT", "UNKNOWN"}
 
 TIMESTAMP_PATTERN = re.compile(
@@ -67,6 +67,6 @@ def validate_event(event: dict[str, Any]) -> bool:
         if not isinstance(line, str) or not line.strip():
             raise ValueError("Crossing events require a counting_line")
     elif line is not None:
-        raise ValueError("Wrong-way events require counting_line=null")
+        raise ValueError("Wrong-way and helmet-violation events require counting_line=null")
 
     return True

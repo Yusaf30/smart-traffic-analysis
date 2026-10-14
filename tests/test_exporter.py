@@ -4,7 +4,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.analytics.exporter import export_stats_csv, export_stats_json
+from app.analytics.exporter import (
+    export_stats_csv,
+    export_stats_json,
+    prepare_stats_for_export,
+)
 
 
 class TestAnalyticsExporter(unittest.TestCase):
@@ -54,6 +58,36 @@ class TestAnalyticsExporter(unittest.TestCase):
         self.assertEqual(values["total"], "3")
         self.assertEqual(values["density"], "UNKNOWN")
         self.assertEqual(values["wrong_way"], "0")
+
+    def test_prepare_dashboard_stats_for_export_preserves_unavailable_directions(self):
+        stats = {
+            "total": 12,
+            "Car": 8,
+            "Bike": 4,
+            "Bus": 0,
+            "Truck": 0,
+            "density": "MEDIUM",
+            "wrong_way": 2,
+        }
+
+        export_stats = prepare_stats_for_export(stats)
+
+        self.assertEqual(
+            export_stats["by_class"],
+            {"Car": 8, "Bike": 4, "Bus": 0, "Truck": 0},
+        )
+        self.assertNotIn("by_direction", export_stats)
+        self.assertNotIn("by_class", stats)
+
+        csv_path = self.directory / "dashboard.csv"
+        json_path = self.directory / "dashboard.json"
+        export_stats_csv(export_stats, csv_path)
+        export_stats_json(export_stats, json_path)
+
+        with csv_path.open(encoding="utf-8-sig", newline="") as file:
+            csv_values = {row[0]: row[1] for row in list(csv.reader(file))[1:]}
+        self.assertEqual(json.loads(csv_values["by_direction"]), {})
+        self.assertNotIn("by_direction", json.loads(json_path.read_text(encoding="utf-8")))
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 ﻿class DensityClassifier:
     """Classify traffic density using the number of vehicles."""
 
-    def __init__(self, low_max: int = 10, medium_max: int = 25) -> None:
+    def __init__(self, low_max: int = 5, medium_max: int = 8) -> None:
         if low_max < 0 or medium_max <= low_max:
             raise ValueError("Thresholds must satisfy 0 <= low_max < medium_max.")
 

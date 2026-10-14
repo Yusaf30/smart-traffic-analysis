@@ -4,11 +4,19 @@ from typing import Literal
 from uuid import uuid4
 
 
-EventType = Literal["vehicle_crossing", "wrong_way"]
+EventType = Literal[
+    "vehicle_crossing",
+    "wrong_way",
+    "helmet_violation",
+]
 VehicleClass = Literal["Car", "Bike", "Bus", "Truck"]
 Direction = Literal["UP", "DOWN", "LEFT", "RIGHT", "UNKNOWN"]
 
-VALID_EVENT_TYPES = {"vehicle_crossing", "wrong_way"}
+VALID_EVENT_TYPES = {
+    "vehicle_crossing",
+    "wrong_way",
+    "helmet_violation",
+}
 VALID_VEHICLE_CLASSES = {"Car", "Bike", "Bus", "Truck"}
 VALID_DIRECTIONS = {"UP", "DOWN", "LEFT", "RIGHT", "UNKNOWN"}
 
@@ -23,6 +31,7 @@ class TrafficEvent:
     direction: Direction
     counting_line: str | None = None
     event_id: str = ""
+    schema_version: str = "1.0"
 
     def __post_init__(self) -> None:
         if not isinstance(self.session_id, str) or not self.session_id.strip():
@@ -52,7 +61,10 @@ class TrafficEvent:
             if not isinstance(self.counting_line, str) or not self.counting_line.strip():
                 raise ValueError("vehicle_crossing requires counting_line")
         elif self.counting_line is not None:
-            raise ValueError("wrong_way must have counting_line=None")
+            raise ValueError(f"{self.event_type} must have counting_line=None")
+
+        if not isinstance(self.schema_version, str) or self.schema_version != "1.0":
+            raise ValueError("Unsupported schema version")
 
         if not self.event_id:
             object.__setattr__(
@@ -71,6 +83,8 @@ class TrafficEvent:
         vehicle_class: VehicleClass,
         direction: Direction,
         counting_line: str | None = None,
+        schema_version: str = "1.0",
+        event_id: str = "",
     ) -> "TrafficEvent":
         timestamp = (
             datetime.now(timezone.utc)
@@ -85,14 +99,17 @@ class TrafficEvent:
             vehicle_class=vehicle_class,
             direction=direction,
             counting_line=counting_line,
+            event_id=event_id,
+            schema_version=schema_version,
         )
 
     def to_dict(self) -> dict:
         return {
+            "schema_version": self.schema_version,
             "event_id": self.event_id,
+            "session_id": self.session_id,
             "event_type": self.event_type,
             "timestamp": self.timestamp,
-            "session_id": self.session_id,
             "track_id": self.track_id,
             "vehicle_class": self.vehicle_class,
             "direction": self.direction,

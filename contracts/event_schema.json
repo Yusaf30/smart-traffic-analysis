@@ -1,4 +1,4 @@
-﻿{
+{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Traffic Analysis System Event Contract",
   "description": "Event Contract v1.0",
@@ -30,7 +30,7 @@
     },
     "event_type": {
       "type": "string",
-      "enum": ["vehicle_crossing", "wrong_way"]
+      "enum": ["vehicle_crossing", "wrong_way", "helmet_violation"]
     },
     "timestamp": {
       "type": "string",
@@ -43,7 +43,7 @@
     },
     "vehicle_class": {
       "type": "string",
-      "enum": ["CAR", "BIKE", "BUS", "TRUCK"]
+      "enum": ["Car", "Bike", "Bus", "Truck"]
     },
     "direction": {
       "type": "string",
@@ -65,7 +65,8 @@
         "properties": {
           "counting_line": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "pattern": "\\S"
           }
         }
       }
@@ -73,7 +74,7 @@
     {
       "if": {
         "properties": {
-          "event_type": {"const": "wrong_way"}
+          "event_type": {"enum": ["wrong_way", "helmet_violation"]}
         },
         "required": ["event_type"]
       },

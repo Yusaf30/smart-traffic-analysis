@@ -1,4 +1,4 @@
-﻿import json
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,7 +14,7 @@ def make_event(event_id="event-001", session_id="session-001"):
         "event_type": "vehicle_crossing",
         "timestamp": "2026-10-09T04:35:12.250Z",
         "track_id": 7,
-        "vehicle_class": "CAR",
+        "vehicle_class": "Car",
         "direction": "DOWN",
         "counting_line": "line-1",
     }

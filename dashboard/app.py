@@ -1,4 +1,6 @@
 ﻿import json
+import sys
+import tempfile
 from pathlib import Path
 
 import streamlit as st
@@ -13,7 +15,10 @@ st.title("🚦 Traffic Analysis Dashboard")
 st.caption("Traffic monitoring and analytics")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if not sys.path or sys.path[0] != str(PROJECT_ROOT):
+    sys.path.insert(0, str(PROJECT_ROOT))
 STATS_FILE = PROJECT_ROOT / "stats.json"
+stats = None
 
 st.subheader("Traffic Overview")
 
@@ -27,6 +32,8 @@ else:
     try:
         with STATS_FILE.open("r", encoding="utf-8") as file:
             stats = json.load(file)
+        if not isinstance(stats, dict):
+            raise ValueError("Statistics must contain a JSON object.")
 
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Total Vehicles", stats.get("total", 0))
@@ -41,8 +48,9 @@ else:
         col5.metric("Buses", stats.get("Bus", 0))
         col6.metric("Trucks", stats.get("Truck", 0))
 
-    except (json.JSONDecodeError, OSError) as error:
+    except (json.JSONDecodeError, OSError, ValueError) as error:
         st.error(f"Could not read traffic statistics: {error}")
+        stats = None
 
 st.subheader("Event Analytics")
 
@@ -60,9 +68,10 @@ else:
         events = load_events(EVENTS_FILE)
         summary = summarize_events(events)
 
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         col1.metric("Total Crossings", summary["total_crossings"])
         col2.metric("Wrong-Way Events", summary["wrong_way_events"])
+        col3.metric("Helmet Violations", summary["helmet_violations"])
 
         st.write("Vehicle Crossings by Class")
         st.bar_chart(summary["vehicle_counts"])
@@ -73,4 +82,37 @@ else:
         st.error(f"Could not read event analytics: {error}")
 
 st.subheader("Exports")
-st.info("CSV and JSON export integration will be added in a later step.")
+if stats is None:
+    st.info("Exports are unavailable until valid traffic statistics are available.")
+else:
+    try:
+        from app.analytics.exporter import (
+            export_stats_csv,
+            export_stats_json,
+            prepare_stats_for_export,
+        )
+
+        export_stats = prepare_stats_for_export(stats)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = Path(temp_dir) / "traffic_stats.csv"
+            json_path = Path(temp_dir) / "traffic_stats.json"
+            export_stats_csv(export_stats, csv_path)
+            export_stats_json(export_stats, json_path)
+            csv_data = csv_path.read_bytes()
+            json_data = json_path.read_bytes()
+
+        csv_col, json_col = st.columns(2)
+        csv_col.download_button(
+            "Download CSV",
+            data=csv_data,
+            file_name="traffic_stats.csv",
+            mime="text/csv",
+        )
+        json_col.download_button(
+            "Download JSON",
+            data=json_data,
+            file_name="traffic_stats.json",
+            mime="application/json",
+        )
+    except (OSError, TypeError, ValueError) as error:
+        st.error(f"Could not prepare statistics exports: {error}")

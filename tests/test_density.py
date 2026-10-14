@@ -9,14 +9,14 @@ class TestDensityClassifier(unittest.TestCase):
 
     def test_low_density(self):
         self.assertEqual(self.classifier.classify(0), "LOW")
-        self.assertEqual(self.classifier.classify(10), "LOW")
+        self.assertEqual(self.classifier.classify(5), "LOW")
 
     def test_medium_density(self):
-        self.assertEqual(self.classifier.classify(11), "MEDIUM")
-        self.assertEqual(self.classifier.classify(25), "MEDIUM")
+        self.assertEqual(self.classifier.classify(6), "MEDIUM")
+        self.assertEqual(self.classifier.classify(8), "MEDIUM")
 
     def test_high_density(self):
-        self.assertEqual(self.classifier.classify(26), "HIGH")
+        self.assertEqual(self.classifier.classify(9), "HIGH")
         self.assertEqual(self.classifier.classify(100), "HIGH")
 
     def test_negative_count_rejected(self):

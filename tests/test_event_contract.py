@@ -1,4 +1,4 @@
-﻿import json
+import json
 import unittest
 from pathlib import Path
 
@@ -125,8 +125,43 @@ class EventContractTests(unittest.TestCase):
         counter.process_event(self.samples[0])
 
         stats = counter.get_stats()
-        self.assertEqual(stats["by_class"]["CAR"], 1)
+        self.assertEqual(stats["by_class"]["Car"], 1)
         self.assertEqual(stats["by_direction"]["UP"], 1)
+
+    def test_uppercase_vehicle_class_is_rejected(self):
+        event = self.samples[0].copy()
+        event["vehicle_class"] = "CAR"
+        with self.assertRaises(ValueError):
+            validate_event(event)
+
+    def test_helmet_violation_event_is_valid(self):
+        event = {
+            "schema_version": "1.0",
+            "event_id": "evt-000099",
+            "session_id": "session-20261009-001",
+            "event_type": "helmet_violation",
+            "timestamp": "2026-10-09T04:37:00.000Z",
+            "track_id": 12,
+            "vehicle_class": "Bike",
+            "direction": "UP",
+            "counting_line": None,
+        }
+        self.assertTrue(validate_event(event))
+
+    def test_helmet_violation_requires_null_counting_line(self):
+        event = {
+            "schema_version": "1.0",
+            "event_id": "evt-000099",
+            "session_id": "session-20261009-001",
+            "event_type": "helmet_violation",
+            "timestamp": "2026-10-09T04:37:00.000Z",
+            "track_id": 12,
+            "vehicle_class": "Bike",
+            "direction": "UP",
+            "counting_line": "main_line",
+        }
+        with self.assertRaises(ValueError):
+            validate_event(event)
 
 
 if __name__ == "__main__":
