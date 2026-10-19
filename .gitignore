@@ -17,4 +17,5 @@ __pycache__/
 *.mkv
 stats.json
 frame_log.csv
+reid_frame_log.csv
 events.json

@@ -36,7 +36,7 @@ else:
             raise ValueError("Statistics must contain a JSON object.")
 
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total Vehicles", stats.get("total", 0))
+        col1.metric("Line Crossings", stats.get("total", 0))
         col2.metric("Cars", stats.get("Car", 0))
         col3.metric("Bikes", stats.get("Bike", 0))
         col4.metric("Wrong-Way Events", stats.get("wrong_way", 0))
@@ -44,9 +44,22 @@ else:
         st.subheader("Traffic Density")
         st.info(f"Current traffic density: {stats.get('density', 'Unknown')}")
 
-        col5, col6 = st.columns(2)
+        col5, col6, col7, col8 = st.columns(4)
         col5.metric("Buses", stats.get("Bus", 0))
         col6.metric("Trucks", stats.get("Truck", 0))
+        col7.metric(
+            "Estimated Unique Vehicles",
+            stats.get("unique_vehicle_count", "Unavailable"),
+        )
+        col8.metric(
+            "Raw Tracker IDs",
+            stats.get("raw_tracker_ids_observed", "Unavailable"),
+        )
+
+        st.caption(
+            f"Frame detections observed: "
+            f"{stats.get('total_frame_detections', 'Unavailable')}"
+        )
 
     except (json.JSONDecodeError, OSError, ValueError) as error:
         st.error(f"Could not read traffic statistics: {error}")

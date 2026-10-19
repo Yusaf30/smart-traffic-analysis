@@ -1,4 +1,5 @@
 import cv2
+import csv
 import json
 import numpy as np
 import os
@@ -8,14 +9,16 @@ from uuid import uuid4
 from ultralytics import YOLO
 from traffic_analysis.events import TrafficEvent
 from traffic_analysis.helmet_monitor import HelmetRiderMonitor
+from traffic_analysis.reid import CanonicalCounter
 
 # =========================
 # CONFIG
 # =========================
-VIDEO_PATH = os.environ.get("VIDEO_PATH", "input.mp4")
+VIDEO_PATH = os.environ.get("VIDEO_PATH", "india_trafic.mp4")
 EVENTS_PATH = "events.json"
 STATS_PATH = "stats.json"
 FRAME_LOG_PATH = "frame_log.csv"
+REID_FRAME_LOG_PATH = os.environ.get("REID_FRAME_LOG_PATH", "reid_frame_log.csv")
 HEADLESS = os.environ.get("HEADLESS", "0") == "1"
 MAX_FRAMES = int(os.environ.get("MAX_FRAMES", "0"))
 
@@ -23,9 +26,15 @@ CONF_THRESHOLD = 0.4
 VEHICLE_CLASSES = [2, 3, 5, 7]
 CLASS_NAMES = {2: "Car", 3: "Bike", 5: "Bus", 7: "Truck"}
 
+# ReID experimental defaults (not calibrated thresholds)
+REID_ENABLED = True
+REID_MAX_GAP_SECONDS = 1.0
+REID_MAX_SPEED_PX_PER_SEC = 200.0
+REID_HIST_THRESHOLD = 0.70
+
 EXPECTED_DIRECTION = "UP"     # change to "DOWN" if normal traffic shows WRONG WAY
 STOP_LINE_Y = 450
-COUNT_LINE_Y = 330            # vehicles are counted when they cross this line
+COUNT_LINE_Y = int(os.environ.get("COUNT_LINE_Y", "500"))
 
 DENSITY_LOW = 6               # fewer than this many vehicles in frame = LOW
 DENSITY_HIGH = 9             # this many or more = HIGH
@@ -128,6 +137,16 @@ recent_counts = deque(maxlen=30)
 wrong_ids = set()
 counts = {"Car": 0, "Bike": 0, "Bus": 0, "Truck": 0}
 wrong_streak = defaultdict(int)
+
+unique_counter = CanonicalCounter(
+    enabled=REID_ENABLED,
+    max_gap_seconds=REID_MAX_GAP_SECONDS,
+    max_speed_px_per_sec=REID_MAX_SPEED_PX_PER_SEC,
+    hist_threshold=REID_HIST_THRESHOLD,
+    fps=fps,
+) if REID_ENABLED else None
+unique_vehicle_count = None if not REID_ENABLED else 0
+total_frame_detections = 0
 start_time = time.time()
 frame_id = 0
 
@@ -138,6 +157,14 @@ helmet_violation_ids = set()
 
 log_file = open(FRAME_LOG_PATH, "w", encoding="utf-8")
 log_file.write("frame,in_frame,total,car,bike,bus,truck,density,wrong_total,wrong_now,fps\n")
+reid_log_file = open(REID_FRAME_LOG_PATH, "w", encoding="utf-8", newline="")
+reid_log_writer = csv.writer(reid_log_file)
+reid_log_writer.writerow([
+    "frame", "raw_track_id", "canonical_id", "class_id", "class_name",
+    "x1", "y1", "x2", "y2", "centroid_x", "centroid_y",
+    "matched_existing", "match_similarity", "decision_reason",
+    "crossing_detected",
+])
 
 # =========================
 # MAIN LOOP
@@ -170,20 +197,51 @@ try:
         )
     
         n_in_frame = 0
+        in_frame = 0
         wrong_now = []
         bike_tracks = []
-    
-        if results[0].boxes.id is not None:
-    
+
+        boxes = None
+        if results[0].boxes is not None and len(results[0].boxes) > 0:
             boxes = results[0].boxes.xyxy.cpu().numpy()
+            in_frame = len(boxes)   # ALL valid vehicle detections, including no-ID
+
+        total_frame_detections += in_frame
+
+        if boxes is not None and results[0].boxes.id is not None:
             ids = results[0].boxes.id.cpu().numpy().astype(int)
             clss = results[0].boxes.cls.cpu().numpy().astype(int)
             n_in_frame = len(ids)
-    
+            reid_observations = [
+                (
+                    int(tid),
+                    int(cls),
+                    tuple(map(int, box)),
+                    (
+                        (int(box[0]) + int(box[2])) // 2,
+                        (int(box[1]) + int(box[3])) // 2,
+                    ),
+                )
+                for box, tid, cls in zip(boxes, ids, clss)
+            ]
+            canonical_ids = {}
+            reid_decisions = {}
+            if unique_counter is not None:
+                canonical_ids = unique_counter.register_frame(
+                    reid_observations, frame_id, frame
+                )
+                reid_decisions = {
+                    decision.track_id: decision
+                    for decision in unique_counter.get_frame_diagnostics()
+                }
+                unique_vehicle_count = unique_counter.get_unique_count()
+
             for box, tid, cls in zip(boxes, ids, clss):
                 x1, y1, x2, y2 = map(int, box)
                 cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
-    
+                canonical_id = canonical_ids.get(int(tid))
+                crossing_detected = False
+
                 prev = track_history[tid][-1] if track_history[tid] else None
                 track_history[tid].append((cx, cy))
     
@@ -198,12 +256,19 @@ try:
                 if name == "Bike":
                     bike_tracks.append((int(tid), (x1, y1, x2, y2)))
     
-                # Counting: each ID counted once when it crosses the line
+                # Count each raw tracker ID once when it crosses the line.
                 if prev is not None and tid not in counted_ids:
-                    if (prev[1] < COUNT_LINE_Y <= cy) or (prev[1] >= COUNT_LINE_Y > cy):
+                    crossed_down = prev[1] < COUNT_LINE_Y <= cy
+                    crossed_up = prev[1] >= COUNT_LINE_Y > cy
+
+                    if crossed_down or crossed_up:
+                        crossing_detected = True
                         counted_ids.add(tid)
                         counts[name] += 1
-                        event_direction = direction if direction != "NONE" else "UNKNOWN"
+
+                        # Determine direction from the actual line crossing.
+                        event_direction = "DOWN" if crossed_down else "UP"
+
                         crossing_event = TrafficEvent.create(
                             event_type="vehicle_crossing",
                             session_id=session_id,
@@ -213,7 +278,6 @@ try:
                             counting_line="main_line",
                         )
                         events.append(crossing_event.to_dict())
-    
                 if is_wrong:
                     wrong_streak[tid] += 1
                 else:
@@ -243,7 +307,10 @@ try:
     
                 cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
     
-                label = f"{name} ID:{tid} {int(speed)}km/h {direction}"
+                identity_label = f"ID:{tid}"
+                if canonical_id is not None:
+                    identity_label += f" C:{canonical_id}"
+                label = f"{name} {identity_label} {int(speed)}km/h {direction}"
                 if is_wrong:
                     label += " WRONG WAY"
                 if tid in helmet_violation_ids:
@@ -253,7 +320,31 @@ try:
     
                 cv2.putText(annotated, label, (x1, y1 - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-    
+
+                if unique_counter is not None:
+                    decision = reid_decisions[int(tid)]
+                    reid_log_writer.writerow([
+                        frame_id,
+                        int(tid),
+                        canonical_id,
+                        int(cls),
+                        name,
+                        x1,
+                        y1,
+                        x2,
+                        y2,
+                        cx,
+                        cy,
+                        decision.matched_existing,
+                        (
+                            ""
+                            if decision.similarity is None
+                            else f"{decision.similarity:.6f}"
+                        ),
+                        decision.reason,
+                        crossing_detected,
+                    ])
+
         # Rider-based helmet check (person + bike association; runs every 3rd frame)
         for bike_id in helmet_monitor.update(frame, bike_tracks, frame_id):
             if bike_id in helmet_violation_ids:
@@ -296,7 +387,10 @@ try:
         # Save stats for the dashboard
         if frame_id % 10 == 0:
             with open(STATS_PATH, "w", encoding="utf-8") as f:
-                json.dump({"total": total, **counts, "density": density,
+                json.dump({"total": total, "total_frame_detections": total_frame_detections,
+                           "raw_tracker_ids_observed": len(track_history),
+                           "unique_vehicle_count": unique_vehicle_count, **counts,
+                           "density": density,
                            "wrong_way": len(wrong_ids)}, f)
     
         # FPS
@@ -310,7 +404,7 @@ try:
                   f"car={counts['Car']} bike={counts['Bike']} bus={counts['Bus']} "
                   f"truck={counts['Truck']} | density={density:6s} | "
                   f"wrong_total={len(wrong_ids)} now={wrong_now} | fps={fps_live:.1f}")
-        log_file.write(f"{frame_id},{n_in_frame},{total},{counts['Car']},{counts['Bike']},"
+        log_file.write(f"{frame_id},{in_frame},{total},{counts['Car']},{counts['Bike']},"
                        f"{counts['Bus']},{counts['Truck']},{density},{len(wrong_ids)},"
                        f"{len(wrong_now)},{fps_live:.1f}\n")
     
@@ -331,11 +425,16 @@ finally:
     cv2.destroyAllWindows()
     if not log_file.closed:
         log_file.close()
+    if not reid_log_file.closed:
+        reid_log_file.close()
     
     total = sum(counts.values())
     recent_density = traffic_density(sum(recent_counts) / len(recent_counts)) if recent_counts else 'LOW'
     with open(STATS_PATH, 'w', encoding='utf-8') as f:
-        json.dump({'total': total, **counts, 'density': recent_density,
+        json.dump({'total': total, 'total_frame_detections': total_frame_detections,
+                   'raw_tracker_ids_observed': len(track_history),
+                   'unique_vehicle_count': unique_vehicle_count, **counts,
+                   'density': recent_density,
                    'wrong_way': len(wrong_ids)}, f, indent=2)
     
     with open(EVENTS_PATH, 'w', encoding='utf-8') as event_file:
@@ -351,5 +450,6 @@ finally:
     print(f'Event output: {EVENTS_PATH}')
     print(f'Stats output: {STATS_PATH}')
     print(f'Frame log output: {FRAME_LOG_PATH}')
+    print(f'ReID frame log output: {REID_FRAME_LOG_PATH}')
     print('=' * 60)
     print('Processing Complete')

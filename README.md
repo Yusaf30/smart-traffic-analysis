@@ -132,6 +132,44 @@ Trucks:  12
 Total: 157
 ```
 
+The default count line is at `y=500` for `india_trafic.mp4`; set the
+`COUNT_LINE_Y` environment variable to calibrate it for another camera/video.
+For example, `COUNT_LINE_Y=330 HEADLESS=1 ./venv/bin/python Terr_v2.py`.
+
+The `total` and per-class values in `stats.json` are **line-crossing event
+counts**, not unique-vehicle counts. `unique_vehicle_count` is a separate,
+experimental estimate based on tracker IDs, 2x2 spatial HSV crop histograms,
+class compatibility, and a pixel-motion gate. Treat it as an estimate, not
+ground-truth identity.
+
+When ReID is enabled, the video overlay shows both the raw tracker ID (`ID`)
+and estimated canonical ID (`C`). `reid_frame_log.csv` records each tracked
+observation's frame, class, bounding box, centroid, canonical mapping, match
+similarity, decision reason, and whether the raw track crossed the configured
+line. A manual validation should inspect the source video around each
+`matched_existing=True` row and confirm the same physical vehicle; color
+histograms alone cannot establish identity.
+
+In the 750-frame `india_trafic.mp4` validation, the previous `y=330` line had
+zero tracked-centroid crossings: all logged centroids were between `y=355`
+and `y=627`, placing that line above the traffic. At `y=500`, the same recorded
+trajectories crossed 14 times (2 Car, 10 Bike, 2 Truck), and the final pipeline
+run saved the corresponding 14 `vehicle_crossing` events. A visually confirmed
+false Bike handoff at frames 136→179 scored 0.807 using the old whole-crop
+histogram; the spatial histogram scored 0.448 and rejected it under the current
+0.70 threshold. This threshold is conservative and remains camera-specific;
+the estimate still requires manual review.
+
+To run a bounded headless sample with the project environment:
+
+```bash
+HEADLESS=1 MAX_FRAMES=180 ./venv/bin/python Terr_v2.py
+```
+
+The pipeline overwrites `events.json`, `stats.json`, `frame_log.csv`, and
+`reid_frame_log.csv`; back them up before a run if their current contents need
+to be retained.
+
 ---
 
 ## 4. 🛣️ Traffic Density Estimation
