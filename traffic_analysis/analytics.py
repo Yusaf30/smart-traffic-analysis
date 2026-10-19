@@ -19,6 +19,18 @@ def classify_density(vehicle_count: int) -> str:
     return "HIGH"
 
 
+def count_untracked_observations(
+    detection_count: int,
+    tracked_detection_count: int,
+) -> int:
+    """Return detections without tracker IDs for one frame."""
+    if detection_count < 0 or tracked_detection_count < 0:
+        raise ValueError("detection counts must be non-negative")
+    if tracked_detection_count > detection_count:
+        raise ValueError("tracked detections cannot exceed total detections")
+    return detection_count - tracked_detection_count
+
+
 def load_events(path: str | Path = "events.json") -> list[dict]:
     """Load events from JSON and validate their schema."""
     from datetime import datetime
@@ -96,6 +108,44 @@ def load_events(path: str | Path = "events.json") -> list[dict]:
             )
 
     return events
+
+
+def summarize_metrics(
+    *,
+    unique_vehicles: list[dict],
+    crossing_events: list[dict],
+    untracked_detections: int,
+) -> dict:
+    """Summarize resolved unique vehicles separately from line crossings.
+
+    ``unique_vehicles`` must contain one already-resolved record per canonical
+    vehicle ID; identity resolution and deduplication belong to the caller.
+    """
+    unique_class_counts = Counter(
+        vehicle["vehicle_class"] for vehicle in unique_vehicles
+    )
+    crossings = [
+        event for event in crossing_events
+        if event["event_type"] == "vehicle_crossing"
+    ]
+    crossing_class_counts = Counter(
+        event["vehicle_class"] for event in crossings
+    )
+
+    return {
+        "unique_vehicle_total": len(unique_vehicles),
+        "unique_vehicles_by_class": {
+            vehicle_class: unique_class_counts.get(vehicle_class, 0)
+            for vehicle_class in VEHICLE_CLASSES
+        },
+        "line_crossings_total": len(crossings),
+        "line_crossings_by_class": {
+            vehicle_class: crossing_class_counts.get(vehicle_class, 0)
+            for vehicle_class in VEHICLE_CLASSES
+        },
+        "untracked_detections": untracked_detections,
+    }
+
 
 def summarize_events(events: list[dict]) -> dict:
     """Summarize crossing counts and recorded wrong-way events."""

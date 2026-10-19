@@ -1,24 +1,30 @@
-import cv2
 import csv
 import json
-import numpy as np
 import os
 import time
 from collections import defaultdict, deque
+from datetime import UTC, datetime
+from pathlib import Path
 from uuid import uuid4
+
+import cv2
+import numpy as np
 from ultralytics import YOLO
 from traffic_analysis.events import TrafficEvent
+from traffic_analysis.analytics import (
+    count_untracked_observations,
+    summarize_metrics,
+)
 from traffic_analysis.helmet_monitor import HelmetRiderMonitor
 from traffic_analysis.reid import CanonicalCounter
+from traffic_analysis.run_history import register_completed_run
 
 # =========================
 # CONFIG
 # =========================
 VIDEO_PATH = os.environ.get("VIDEO_PATH", "india_trafic.mp4")
-EVENTS_PATH = "events.json"
-STATS_PATH = "stats.json"
-FRAME_LOG_PATH = "frame_log.csv"
-REID_FRAME_LOG_PATH = os.environ.get("REID_FRAME_LOG_PATH", "reid_frame_log.csv")
+OUTPUTS_DIR = Path(__file__).resolve().parent / "outputs"
+RUNS_DIR = OUTPUTS_DIR / "runs"
 HEADLESS = os.environ.get("HEADLESS", "0") == "1"
 MAX_FRAMES = int(os.environ.get("MAX_FRAMES", "0"))
 
@@ -127,6 +133,18 @@ cap = cv2.VideoCapture(VIDEO_PATH)
 if not cap.isOpened():
     raise SystemExit(f"Could not open video: {VIDEO_PATH}")
 
+run_started_at = datetime.now(UTC)
+run_id = f"{run_started_at.strftime('%Y%m%dT%H%M%S.%fZ')}-{uuid4().hex[:8]}"
+run_output_dir = RUNS_DIR / run_id
+run_output_dir.mkdir(parents=True, exist_ok=False)
+EVENTS_PATH = run_output_dir / "events.json"
+STATS_PATH = run_output_dir / "stats.json"
+FRAME_LOG_PATH = run_output_dir / "frame_log.csv"
+reid_log_name = Path(
+    os.environ.get("REID_FRAME_LOG_PATH", "reid_frame_log.csv")
+).name or "reid_frame_log.csv"
+REID_FRAME_LOG_PATH = run_output_dir / reid_log_name
+
 fps = cap.get(cv2.CAP_PROP_FPS)
 if fps == 0:
     fps = 25
@@ -147,6 +165,7 @@ unique_counter = CanonicalCounter(
 ) if REID_ENABLED else None
 unique_vehicle_count = None if not REID_ENABLED else 0
 total_frame_detections = 0
+untracked_detection_observations = 0
 start_time = time.time()
 frame_id = 0
 
@@ -154,6 +173,24 @@ session_id = uuid4().hex
 events = []
 wrong_event_ids = set()
 helmet_violation_ids = set()
+
+
+def current_metric_summary():
+    canonical_vehicles = (
+        unique_counter.get_canonical_vehicles(CLASS_NAMES)
+        if unique_counter is not None
+        else []
+    )
+    metrics = summarize_metrics(
+        unique_vehicles=canonical_vehicles,
+        crossing_events=events,
+        untracked_detections=untracked_detection_observations,
+    )
+    if unique_counter is None:
+        metrics["unique_vehicle_total"] = None
+        metrics["unique_vehicles_by_class"] = None
+    return metrics
+
 
 log_file = open(FRAME_LOG_PATH, "w", encoding="utf-8")
 log_file.write("frame,in_frame,total,car,bike,bus,truck,density,wrong_total,wrong_now,fps\n")
@@ -169,6 +206,7 @@ reid_log_writer.writerow([
 # =========================
 # MAIN LOOP
 # =========================
+run_completed_successfully = False
 try:
     while True:
         ret, frame = cap.read()
@@ -345,6 +383,10 @@ try:
                         crossing_detected,
                     ])
 
+        untracked_detection_observations += count_untracked_observations(
+            in_frame, n_in_frame
+        )
+
         # Rider-based helmet check (person + bike association; runs every 3rd frame)
         for bike_id in helmet_monitor.update(frame, bike_tracks, frame_id):
             if bike_id in helmet_violation_ids:
@@ -390,6 +432,7 @@ try:
                 json.dump({"total": total, "total_frame_detections": total_frame_detections,
                            "raw_tracker_ids_observed": len(track_history),
                            "unique_vehicle_count": unique_vehicle_count, **counts,
+                           **current_metric_summary(),
                            "density": density,
                            "wrong_way": len(wrong_ids)}, f)
     
@@ -416,6 +459,8 @@ try:
         if MAX_FRAMES > 0 and frame_id >= MAX_FRAMES:
             print(f"Reached MAX_FRAMES ({MAX_FRAMES}). Stopping.")
             break
+
+    run_completed_successfully = True
     
 finally:
     # =========================
@@ -434,11 +479,24 @@ finally:
         json.dump({'total': total, 'total_frame_detections': total_frame_detections,
                    'raw_tracker_ids_observed': len(track_history),
                    'unique_vehicle_count': unique_vehicle_count, **counts,
+                   **current_metric_summary(),
                    'density': recent_density,
                    'wrong_way': len(wrong_ids)}, f, indent=2)
     
     with open(EVENTS_PATH, 'w', encoding='utf-8') as event_file:
         json.dump(events, event_file, indent=2)
+
+    if run_completed_successfully:
+        completed_at = datetime.now(UTC).isoformat().replace(
+            "+00:00", "Z"
+        )
+        register_completed_run(
+            OUTPUTS_DIR,
+            run_id=run_id,
+            run_directory=run_output_dir,
+            completed_at=completed_at,
+            source_video=VIDEO_PATH,
+        )
     
     print('=' * 60)
     print('FINAL COUNTS:', counts, 'TOTAL:', sum(counts.values()))
@@ -452,4 +510,7 @@ finally:
     print(f'Frame log output: {FRAME_LOG_PATH}')
     print(f'ReID frame log output: {REID_FRAME_LOG_PATH}')
     print('=' * 60)
-    print('Processing Complete')
+    if run_completed_successfully:
+        print('Processing Complete')
+    else:
+        print('Processing did not complete; run was not added to history.')

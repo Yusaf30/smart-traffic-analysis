@@ -22,6 +22,14 @@ def export_stats_csv(stats: dict[str, Any], file_path: str | Path) -> None:
     path = Path(file_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
+    def json_metric(name: str) -> str:
+        value = stats.get(name)
+        return json.dumps(value, sort_keys=True) if isinstance(value, dict) else ""
+
+    def scalar_metric(name: str) -> Any:
+        value = stats.get(name)
+        return "" if value is None else value
+
     rows = [
         ("metric", "value"),
         ("total", stats.get("total", 0)),
@@ -29,6 +37,11 @@ def export_stats_csv(stats: dict[str, Any], file_path: str | Path) -> None:
         ("by_direction", json.dumps(stats.get("by_direction", {}), sort_keys=True)),
         ("density", stats.get("density", "UNKNOWN")),
         ("wrong_way", stats.get("wrong_way", 0)),
+        ("unique_vehicle_total", scalar_metric("unique_vehicle_total")),
+        ("unique_vehicles_by_class", json_metric("unique_vehicles_by_class")),
+        ("line_crossings_total", scalar_metric("line_crossings_total")),
+        ("line_crossings_by_class", json_metric("line_crossings_by_class")),
+        ("untracked_detections", scalar_metric("untracked_detections")),
     ]
 
     with path.open("w", encoding="utf-8-sig", newline="") as file:

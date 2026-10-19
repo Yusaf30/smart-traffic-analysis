@@ -89,6 +89,84 @@ class TestAnalyticsExporter(unittest.TestCase):
         self.assertEqual(json.loads(csv_values["by_direction"]), {})
         self.assertNotIn("by_direction", json.loads(json_path.read_text(encoding="utf-8")))
 
+    def test_new_metrics_are_included_without_changing_legacy_fields(self):
+        stats = {
+            "total": 12,
+            "Car": 8,
+            "Bike": 4,
+            "Bus": 0,
+            "Truck": 0,
+            "unique_vehicle_total": 9,
+            "unique_vehicles_by_class": {
+                "Car": 5,
+                "Bike": 4,
+                "Bus": 0,
+                "Truck": 0,
+            },
+            "line_crossings_total": 12,
+            "line_crossings_by_class": {
+                "Car": 8,
+                "Bike": 4,
+                "Bus": 0,
+                "Truck": 0,
+            },
+            "untracked_detections": 3,
+        }
+        export_stats = prepare_stats_for_export(stats)
+        csv_path = self.directory / "metrics.csv"
+        json_path = self.directory / "metrics.json"
+
+        export_stats_csv(export_stats, csv_path)
+        export_stats_json(export_stats, json_path)
+
+        with csv_path.open(encoding="utf-8-sig", newline="") as file:
+            values = {row[0]: row[1] for row in list(csv.reader(file))[1:]}
+        self.assertEqual(values["total"], "12")
+        self.assertEqual(json.loads(values["by_class"]), {
+            "Car": 8,
+            "Bike": 4,
+            "Bus": 0,
+            "Truck": 0,
+        })
+        self.assertEqual(values["unique_vehicle_total"], "9")
+        self.assertEqual(
+            json.loads(values["unique_vehicles_by_class"]),
+            stats["unique_vehicles_by_class"],
+        )
+        self.assertEqual(values["line_crossings_total"], "12")
+        self.assertEqual(
+            json.loads(values["line_crossings_by_class"]),
+            stats["line_crossings_by_class"],
+        )
+        self.assertEqual(values["untracked_detections"], "3")
+        self.assertEqual(json.loads(json_path.read_text(encoding="utf-8")), export_stats)
+
+    def test_null_new_metrics_export_as_unavailable_csv_cells_and_json_nulls(self):
+        stats = {
+            "total": 2,
+            "unique_vehicle_total": None,
+            "unique_vehicles_by_class": None,
+            "line_crossings_total": 2,
+            "line_crossings_by_class": {"Car": 2},
+            "untracked_detections": 0,
+        }
+        csv_path = self.directory / "null-metrics.csv"
+        json_path = self.directory / "null-metrics.json"
+
+        export_stats_csv(stats, csv_path)
+        export_stats_json(stats, json_path)
+
+        with csv_path.open(encoding="utf-8-sig", newline="") as file:
+            values = {row[0]: row[1] for row in list(csv.reader(file))[1:]}
+        self.assertEqual(values["unique_vehicle_total"], "")
+        self.assertEqual(values["unique_vehicles_by_class"], "")
+        self.assertIsNone(json.loads(json_path.read_text(encoding="utf-8"))[
+            "unique_vehicle_total"
+        ])
+        self.assertIsNone(json.loads(json_path.read_text(encoding="utf-8"))[
+            "unique_vehicles_by_class"
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()

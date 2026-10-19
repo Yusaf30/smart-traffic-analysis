@@ -8,10 +8,12 @@ All thresholds are configurable experimental defaults, not calibrated values.
 
 from __future__ import annotations
 
+from collections import Counter
+from dataclasses import dataclass, field
+from typing import Mapping, Optional
+
 import cv2
 import numpy as np
-from dataclasses import dataclass, field
-from typing import Optional
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +64,21 @@ class CanonicalRecord:
     appearances: list[Appearance] = field(default_factory=list)
     last_frame: int = -1
     last_centroid: Optional[tuple[float, float]] = None
+
+    def resolve_class_id(self) -> int:
+        """Resolve the vehicle class by majority vote, breaking ties by registration."""
+        if not self.class_history:
+            return self.registered_class_id
+
+        counts = Counter(self.class_history)
+        max_count = max(counts.values())
+        majority_classes = [
+            class_id for class_id, count in counts.items()
+            if count == max_count
+        ]
+        if len(majority_classes) > 1:
+            return self.registered_class_id
+        return majority_classes[0]
 
 
 def extract_appearance(
@@ -491,6 +508,19 @@ class CanonicalCounter:
     def get_unique_count(self) -> int:
         """Cumulative number of distinct canonical vehicles seen so far."""
         return len(self._canonicals)
+
+    def get_canonical_vehicles(
+        self,
+        class_names: Mapping[int, str],
+    ) -> list[dict[str, int | str]]:
+        """Return resolved canonical vehicle records without exposing internal state."""
+        return [
+            {
+                "canonical_id": canonical_id,
+                "vehicle_class": class_names[record.resolve_class_id()],
+            }
+            for canonical_id, record in self._canonicals.items()
+        ]
 
     def get_canonical_id(self, track_id: int) -> Optional[int]:
         """Return the canonical ID for a track ID, or None if unseen."""

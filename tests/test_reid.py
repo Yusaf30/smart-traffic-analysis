@@ -95,6 +95,58 @@ def test_first_observation_is_added_once_to_class_history():
     assert rec.class_history == [2]
 
 
+def test_canonical_class_resolution_uses_majority_vote():
+    rec = CanonicalRecord(
+        canonical_id=1,
+        registered_class_id=2,
+        class_history=[2, 3, 2],
+    )
+
+    assert rec.resolve_class_id() == 2
+
+
+def test_canonical_class_resolution_tie_uses_registered_class():
+    rec = CanonicalRecord(
+        canonical_id=1,
+        registered_class_id=3,
+        class_history=[2, 3, 2, 3],
+    )
+
+    assert rec.resolve_class_id() == 3
+
+
+def test_canonical_class_resolution_handles_single_observation():
+    rec = CanonicalRecord(
+        canonical_id=1,
+        registered_class_id=2,
+        class_history=[3],
+    )
+
+    assert rec.resolve_class_id() == 3
+
+
+def test_canonical_class_resolution_empty_history_falls_back_to_registered():
+    rec = CanonicalRecord(canonical_id=1, registered_class_id=7)
+
+    assert rec.resolve_class_id() == 7
+
+
+def test_get_canonical_vehicles_returns_resolved_records():
+    c = CanonicalCounter(fps=25.0)
+    frame = _frame_with_color((30, 100, 200))
+    c.register_frame([(5, 2, _bbox(50, 50), (50.0, 50.0))], 1, frame)
+    c.register_frame([(5, 3, _bbox(51, 50), (51.0, 50.0))], 2, frame)
+    c.register_frame([(5, 2, _bbox(52, 50), (52.0, 50.0))], 3, frame)
+
+    vehicles = c.get_canonical_vehicles({2: "Car", 3: "Bike"})
+
+    assert vehicles == [{"canonical_id": 1, "vehicle_class": "Car"}]
+    vehicles[0]["vehicle_class"] = "Truck"
+    assert c.get_canonical_vehicles({2: "Car", 3: "Bike"}) == [
+        {"canonical_id": 1, "vehicle_class": "Car"}
+    ]
+
+
 def test_disabled_reid_does_not_merge_fragmented_track_ids():
     c = CanonicalCounter(enabled=False, fps=25.0)
     frame = _frame_with_color((30, 100, 200))
@@ -215,6 +267,28 @@ def test_id_switch_resolves_to_existing_canonical():
     cid5 = c.get_canonical_id(5)
     results = c.register_frame([(9, 2, _bbox(51, 51), (51.0, 51.0))], 2, frame)
     assert results[9] == cid5
+    assert c.get_unique_count() == 1
+
+
+def test_resolved_class_change_does_not_break_registered_class_matching():
+    c = CanonicalCounter(fps=25.0)
+    frame = _frame_with_color((30, 100, 200))
+    c.register_frame([(5, 2, _bbox(50, 50), (50.0, 50.0))], 1, frame)
+    canonical_id = c.get_canonical_id(5)
+    c.register_frame([(5, 3, _bbox(51, 50), (51.0, 50.0))], 2, frame)
+    c.register_frame([(5, 3, _bbox(52, 50), (52.0, 50.0))], 3, frame)
+
+    record = c._canonicals[canonical_id]
+    assert record.resolve_class_id() == 3
+    assert record.registered_class_id == 2
+
+    results = c.register_frame(
+        [(9, 2, _bbox(53, 50), (53.0, 50.0))],
+        4,
+        frame,
+    )
+
+    assert results[9] == canonical_id
     assert c.get_unique_count() == 1
 
 
