@@ -19,3 +19,7 @@ stats.json
 frame_log.csv
 reid_frame_log.csv
 events.json
+# Local traffic analysis outputs and test artifacts
+/outputs/
+/scratch/
+/live_test_20261019/
