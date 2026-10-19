@@ -166,9 +166,20 @@ To run a bounded headless sample with the project environment:
 HEADLESS=1 MAX_FRAMES=180 ./venv/bin/python Terr_v2.py
 ```
 
-The pipeline overwrites `events.json`, `stats.json`, `frame_log.csv`, and
-`reid_frame_log.csv`; back them up before a run if their current contents need
-to be retained.
+Each pipeline execution writes its outputs to a new unique directory under
+`outputs/runs/`, including `stats.json`, `events.json`, `frame_log.csv`, and
+`reid_frame_log.csv`. A completed run is added to `outputs/run_manifest.json`
+only after its final statistics and events have been written. Incomplete runs
+remain unlisted and do not replace the latest completed run.
+
+The dashboard uses the latest completed run by default and provides a selector
+for earlier runs. To inspect an existing results directory that is not in the
+run manifest, set `TRAFFIC_RESULTS_DIR` to that directory when starting the
+dashboard; a relative path is resolved from the repository root. This explicit
+override bypasses run history and reads both `stats.json` and `events.json`
+from that one directory. Existing files such as
+`live_test_20261019/outputs/` are preserved but are not automatically added to
+the history or represented as newly processed runs.
 
 ---
 
