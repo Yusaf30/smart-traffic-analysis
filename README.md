@@ -95,9 +95,10 @@ The main objective is to integrate these stages into an understandable, modular,
 
 The processing pipeline generates results for a particular run. The dashboard reads stored outputs, allowing completed analyses to be reviewed without reprocessing the source video every time.
 
+
 ## Project structure
 
-The main tracked project components are organised as follows:
+The main project components, tests, and documentation are organised as follows:
 
 ```text
 Smart_traffic_Analysis_System/
@@ -109,6 +110,13 @@ Smart_traffic_Analysis_System/
 │   └── event_schema.json
 ├── dashboard/
 │   └── app.py
+├── docs/
+│   └── images/
+│       ├── live-detection.png
+│       ├── dashboard-overview1.png
+│       ├── dashboard-overview2.png
+│       ├── event-analytics.png
+│       └── run-history.png
 ├── samples/
 │   └── sample_events.json
 ├── tests/
@@ -288,37 +296,33 @@ docs/
     ├── live-detection.png
     ├── dashboard-overview1.png
     ├── dashboard-overview2.png
-    ├── class-statistics.png
-    └── event-analytics.png
+    ├── event-analytics.png
+    └── run-history.png
+```
 
-Live Vehicle Detection
+### Live Vehicle Detection
 
-The system detects and tracks vehicles in traffic footage, displaying the detections and tracking information.
+The system detects and tracks vehicles in traffic footage, displaying detections and tracking information.
 
 ![Live vehicle detection](docs/images/live-detection.png)
 
-
-
 ### Dashboard Overview
 
-The Streamlit dashboard presents traffic statistics, vehicle counts, and density information for the selected processing run.
+The Streamlit dashboard presents traffic statistics, vehicle counts, and density information.
 
 ![Dashboard overview](docs/images/dashboard-overview1.png)
 
 ![Dashboard overview showing traffic statistics](docs/images/dashboard-overview2.png)
 
-
-
-Event Analytics
+### Event Analytics
 
 The analytics view displays vehicle crossings by class and provides CSV and JSON export options.
 
 ![Event analytics](docs/images/event-analytics.png)
 
+### Run History
 
-Run History
-
-The run selector lets users choose from recorded processing runs and inspect the analytics associated with the selected run.
+The run selector lets users choose recorded processing runs and inspect the associated analytics.
 
 ![Run history](docs/images/run-history.png)
 
